@@ -1,4 +1,3 @@
-import androidx.compose.foundation.lazy.grid.items
 package com.sticker.app.ui
 
 import android.content.Context
@@ -10,7 +9,12 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.material3.*
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,16 +45,20 @@ fun GeneratorScreen(
     var status by remember { mutableStateOf("") }
 
     val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) {
-        imageUri = it; previewUrls = emptyList()
+        imageUri = it
+        previewUrls = emptyList()
     }
 
     Column(modifier = modifier.padding(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Button(onClick = { pickImage.launch("image/*") }) { Text(if (imageUri == null) "Upload photo" else "Change photo") }
+            Button(onClick = { pickImage.launch("image/*") }) {
+                Text(if (imageUri == null) "Upload photo" else "Change photo")
+            }
             Spacer(Modifier.width(12.dp))
             imageUri?.let {
-                val bm = loadThumb(ctx, it)
-                if (bm != null) Image(bm.asImageBitmap(), null, Modifier.size(64.dp))
+                loadThumb(ctx, it)?.let { bm ->
+                    Image(bm.asImageBitmap(), null, Modifier.size(64.dp))
+                }
             }
         }
 
@@ -58,13 +66,14 @@ fun GeneratorScreen(
         Button(
             onClick = {
                 if (imageUri == null) return@Button
-                generating = true; status = "Uploading image…"
+                generating = true
+                status = "Uploading image…"
                 scope.launch(Dispatchers.IO) {
                     try {
                         val fileUrl = client.uploadImage(ctx, imageUri!!)
                         val urls = mutableListOf<String>()
                         for ((i, p) in PROMPTS.withIndex()) {
-                            status = "Preview ${i+1}/5…"
+                            status = "Preview ${i + 1}/5…"
                             val out = client.generateImage(
                                 version = previewVersion,
                                 input = mapOf(
@@ -78,8 +87,11 @@ fun GeneratorScreen(
                         }
                         previewUrls = urls
                         status = "Previews ready. Select a prompt, then generate 100."
-                    } catch (e: Exception) { status = "Error: ${e.message}" }
-                    finally { generating = false }
+                    } catch (e: Exception) {
+                        status = "Error: ${e.message}"
+                    } finally {
+                        generating = false
+                    }
                 }
             },
             enabled = imageUri != null && !generating
@@ -90,14 +102,23 @@ fun GeneratorScreen(
             Text("Select one of the 5 prompts:")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 repeat(5) { i ->
-                    FilterChip(selected = selectedPromptIndex == i, onClick = { selectedPromptIndex = i }, label = { Text("Prompt ${i+1}") })
+                    FilterChip(
+                        selected = selectedPromptIndex == i,
+                        onClick = { selectedPromptIndex = i },
+                        label = { Text("Prompt ${i + 1}") }
+                    )
                 }
             }
             Spacer(Modifier.height(12.dp))
-            LazyVerticalGrid(columns = GridCells.Fixed(2), modifier = Modifier.height(220.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                modifier = Modifier.height(220.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(previewUrls.size) { idx -> PreviewImage(previewUrls[idx]) }
+                items(previewUrls) { url ->
+                    PreviewImage(url)
+                }
             }
         }
 
@@ -105,16 +126,18 @@ fun GeneratorScreen(
         Button(
             onClick = {
                 if (imageUri == null) return@Button
-                generating = true; status = "Starting 100× 4K generation…"
+                generating = true
+                status = "Starting 100× 4K generation…"
                 scope.launch(Dispatchers.IO) {
                     try {
                         val fileUrl = client.uploadImage(ctx, imageUri!!)
                         val basePrompt = PROMPTS[selectedPromptIndex]
                         var done = 0
                         val total = CATEGORIES.values.sumOf { it.size }
+
                         for ((cat, list) in CATEGORIES) {
                             for ((k, variant) in list.withIndex()) {
-                                status = "[$cat] ${k+1}/${list.size} (${++done}/$total)"
+                                status = "[$cat] ${k + 1}/${list.size} (${++done}/$total)"
                                 val prompt = "$basePrompt, $variant, sticker, white background, head-only, no neck"
                                 val out = client.generateImage(
                                     version = finalVersion,
@@ -126,12 +149,15 @@ fun GeneratorScreen(
                                         "num_inference_steps" to 28, "guidance_scale" to 7.0, "strength" to 0.55
                                     )
                                 )
-                                client.downloadToDownloads(ctx, out, "${cat}_${k+1}.jpg")
+                                client.downloadToDownloads(ctx, out, "${cat}_${k + 1}.jpg")
                             }
                         }
                         status = "Done. Saved 100 images in Downloads."
-                    } catch (e: Exception) { status = "Error: ${e.message}" }
-                    finally { generating = false }
+                    } catch (e: Exception) {
+                        status = "Error: ${e.message}"
+                    } finally {
+                        generating = false
+                    }
                 }
             },
             enabled = imageUri != null && previewUrls.isNotEmpty() && !generating
@@ -147,9 +173,15 @@ fun GeneratorScreen(
 private fun PreviewImage(url: String) {
     var bmp by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     LaunchedEffect(url) {
-        try { java.net.URL(url).openStream().use { s -> bmp = BitmapFactory.decodeStream(s) } } catch (_: Throwable) {}
+        try {
+            java.net.URL(url).openStream().use { s ->
+                bmp = BitmapFactory.decodeStream(s)
+            }
+        } catch (_: Throwable) {}
     }
-    bmp?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxWidth().height(120.dp)) }
+    bmp?.let {
+        Image(it.asImageBitmap(), null, Modifier.fillMaxWidth().height(120.dp))
+    }
 }
 
 private fun loadThumb(ctx: Context, uri: Uri): android.graphics.Bitmap? =
