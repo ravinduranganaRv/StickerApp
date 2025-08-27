@@ -14,11 +14,26 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        // Filled at build time from Actions secrets (can be empty).
+        // BuildConfig fields will be injected at build time by Actions (can be blank if no secrets set)
         buildConfigField("String", "REPLICATE_API_TOKEN", "\"${System.getenv("REPLICATE_API_TOKEN") ?: ""}\"")
         buildConfigField("String", "MODEL_PREVIEW_VERSION", "\"${System.getenv("MODEL_PREVIEW_VERSION") ?: ""}\"")
         buildConfigField("String", "MODEL_FINAL_VERSION", "\"${System.getenv("MODEL_FINAL_VERSION") ?: ""}\"")
     }
+
+    buildTypes {
+        debug { isMinifyEnabled = false }
+        release { isMinifyEnabled = false }
+    }
+
+    buildFeatures {
+        compose = true
+        buildConfig = true   // <-- IMPORTANT: enable BuildConfig
+    }
+
+    composeOptions { kotlinCompilerExtensionVersion = "1.5.15" }
+    packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+    kotlinOptions { jvmTarget = "17" }
+}
 
     buildTypes {
         debug { isMinifyEnabled = false }
