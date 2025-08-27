@@ -1,3 +1,4 @@
+import androidx.compose.foundation.lazy.grid.items
 package com.sticker.app.ui
 
 import android.content.Context
