@@ -1,18 +1,24 @@
-import okhttp3.MediaType.Companion.toMediaType
-import okio.buffer
-import okio.sink
 package com.sticker.app.net
 
 import android.content.Context
 import android.net.Uri
 import android.os.Environment
 import com.squareup.moshi.JsonClass
-import okhttp3.*
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import okio.buffer
 import okio.sink
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
-import retrofit2.http.*
+import retrofit2.http.Body
+import retrofit2.http.GET
+import retrofit2.http.Multipart
+import retrofit2.http.POST
+import retrofit2.http.Part
+import retrofit2.http.Path
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -28,9 +34,22 @@ interface ReplicateApi {
     suspend fun getPrediction(@Path("id") id: String): PredictionResp
 }
 
-@JsonClass(generateAdapter = true) data class UploadResp(val url: String?)
-@JsonClass(generateAdapter = true) data class CreatePredictionReq(val version: String, val input: Map<String, @JvmSuppressWildcards Any>)
-@JsonClass(generateAdapter = true) data class PredictionResp(val id: String, val status: String, val output: Any?, val error: String?)
+@JsonClass(generateAdapter = true)
+data class UploadResp(val url: String?)
+
+@JsonClass(generateAdapter = true)
+data class CreatePredictionReq(
+    val version: String,
+    val input: Map<String, @JvmSuppressWildcards Any>
+)
+
+@JsonClass(generateAdapter = true)
+data class PredictionResp(
+    val id: String,
+    val status: String,
+    val output: Any?,
+    val error: String?
+)
 
 class ReplicateClient(private val token: String) {
     private val ok = OkHttpClient.Builder()
@@ -41,34 +60,39 @@ class ReplicateClient(private val token: String) {
 
     private val api: ReplicateApi = Retrofit.Builder()
         .baseUrl("https://api.replicate.com/")
-        .client(ok.newBuilder().addInterceptor { chain ->
-            val req = chain.request().newBuilder()
-                .addHeader("Authorization", "Token $token")
-                .addHeader("Content-Type", "application/json")
+        .client(
+            ok.newBuilder()
+                .addInterceptor { chain ->
+                    val req = chain.request().newBuilder()
+                        .addHeader("Authorization", "Token $token")
+                        .addHeader("Content-Type", "application/json")
+                        .build()
+                    chain.proceed(req)
+                }
                 .build()
-            chain.proceed(req)
-        }.build())
+        )
         .addConverterFactory(MoshiConverterFactory.create())
         .build()
         .create(ReplicateApi::class.java)
 
     suspend fun uploadImage(ctx: Context, uri: Uri): String {
-        val stream = ctx.contentResolver.openInputStream(uri) ?: error("Cannot read image")
-        val bytes = stream.readBytes(); stream.close()
-        val body = RequestBody.create("application/octet-stream".toMediaType(), bytes)
+        val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            ?: error("Cannot read image")
+        val body = bytes.toRequestBody("application/octet-stream".toMediaType())
         val part = MultipartBody.Part.createFormData("file", "upload.jpg", body)
         val resp = api.uploadFile(part)
         return resp.url ?: error("Upload failed")
     }
 
     suspend fun generateImage(version: String, input: Map<String, Any>): String {
-        val create = api.createPrediction(CreatePredictionReq(version, input))
-        var cur = create
-        while (cur.status in listOf("starting","processing","queued","running")) {
+        var cur = api.createPrediction(CreatePredictionReq(version, input))
+        while (cur.status in listOf("starting", "processing", "queued", "running")) {
             Thread.sleep(2000)
             cur = api.getPrediction(cur.id)
         }
-        if (cur.status != "succeeded") throw RuntimeException("Generation failed: ${cur.error ?: cur.status}")
+        if (cur.status != "succeeded") {
+            throw RuntimeException("Generation failed: ${cur.error ?: cur.status}")
+        }
         val out = cur.output
         return when (out) {
             is String -> out
@@ -84,7 +108,9 @@ class ReplicateClient(private val token: String) {
             val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
             if (!dir.exists()) dir.mkdirs()
             val out = File(dir, fileName)
-            resp.body?.source()?.use { src -> out.sink().buffer().use { sink -> sink.writeAll(src) } }
+            resp.body?.source()?.use { src ->
+                out.sink().buffer().use { sink -> sink.writeAll(src) }
+            }
             return out.absolutePath
         }
     }
