@@ -1,6 +1,6 @@
 plugins {
-    id("com.android.application") version "8.5.2" apply false
-    id("org.jetbrains.kotlin.android") version "1.9.25" apply false
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
 }
 
 android {
@@ -14,7 +14,7 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        // BuildConfig values (may be empty if no GitHub Secrets set; you can paste in-app Settings)
+        // BuildConfig values (can be blank; you can paste them in-app Settings)
         buildConfigField("String", "REPLICATE_API_TOKEN", "\"${System.getenv("REPLICATE_API_TOKEN") ?: ""}\"")
         buildConfigField("String", "MODEL_PREVIEW_VERSION", "\"${System.getenv("MODEL_PREVIEW_VERSION") ?: ""}\"")
         buildConfigField("String", "MODEL_FINAL_VERSION", "\"${System.getenv("MODEL_FINAL_VERSION") ?: ""}\"")
@@ -30,26 +30,21 @@ android {
         buildConfig = true
     }
 
-    // Align Java toolchain for Java + Kotlin (fixes 1.8 vs 17 mismatch)
+    // Align Java + Kotlin to 17
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
+    kotlinOptions { jvmTarget = "17" }
 
-    composeOptions { kotlinCompilerExtensionVersion = "1.5.15" }
+    // IMPORTANT: Compose compiler version compatible with Kotlin 1.9.24
+    composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
 
-    packaging {
-        resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
-    }
+    packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
 }
 
-// Optional: also pin toolchain (extra safety)
-kotlin {
-    jvmToolchain(17)
-}
+// Optional: extra safety pin
+kotlin { jvmToolchain(17) }
 
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.10.01")
