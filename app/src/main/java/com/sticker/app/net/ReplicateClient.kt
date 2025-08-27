@@ -1,3 +1,6 @@
+import okhttp3.MediaType.Companion.toMediaType
+import okio.buffer
+import okio.sink
 package com.sticker.app.net
 
 import android.content.Context
