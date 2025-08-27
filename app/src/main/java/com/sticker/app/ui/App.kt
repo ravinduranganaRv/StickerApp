@@ -1,5 +1,5 @@
 package com.sticker.app.ui
-
+import com.sticker.app.BuildConfig
 import android.content.Context
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
