@@ -3,6 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+
 android {
     namespace = "com.sticker.app"
     compileSdk = 34
@@ -14,12 +15,31 @@ android {
         versionCode = 1
         versionName = "1.0"
 
-        // BuildConfig values (may be empty if no secrets set in Actions; you can paste in-app Settings later)
         buildConfigField("String", "REPLICATE_API_TOKEN", "\"${System.getenv("REPLICATE_API_TOKEN") ?: ""}\"")
         buildConfigField("String", "MODEL_PREVIEW_VERSION", "\"${System.getenv("MODEL_PREVIEW_VERSION") ?: ""}\"")
         buildConfigField("String", "MODEL_FINAL_VERSION", "\"${System.getenv("MODEL_FINAL_VERSION") ?: ""}\"")
     }
 
+    buildTypes {
+        debug { isMinifyEnabled = false }
+        release { isMinifyEnabled = false }
+    }
+
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+
+    // Align Java to 17 (fixes: Java 1.8 vs Kotlin 17 mismatch)
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    composeOptions { kotlinCompilerExtensionVersion = "1.5.15" }
+    kotlinOptions { jvmTarget = "17" }
+    packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+}
     buildTypes {
         debug { isMinifyEnabled = false }
         release { isMinifyEnabled = false }
