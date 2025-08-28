@@ -1,68 +1,112 @@
 package com.sticker.app.ui
-import com.sticker.app.BuildConfig
-import android.content.Context
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
 
-val Context.dataStore by preferencesDataStore(name = "settings")
-private val KEY_API = stringPreferencesKey("replicate_api_token")
-private val KEY_PREVIEW = stringPreferencesKey("model_preview_version")
-private val KEY_FINAL = stringPreferencesKey("model_final_version")
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import com.sticker.app.BuildConfig
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun App() {
-    val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val ds = ctx.dataStore
-
-    val defaultApi = BuildConfig.REPLICATE_API_TOKEN
-    val defaultPreview = BuildConfig.MODEL_PREVIEW_VERSION
-    val defaultFinal = BuildConfig.MODEL_FINAL_VERSION
-
-    val api by ds.data.map { it[KEY_API] ?: defaultApi }.collectAsState(initial = defaultApi)
-    val preview by ds.data.map { it[KEY_PREVIEW] ?: defaultPreview }.collectAsState(initial = defaultPreview)
-    val fin by ds.data.map { it[KEY_FINAL] ?: defaultFinal }.collectAsState(initial = defaultFinal)
-
-    var showSettings by rememberSaveable { mutableStateOf(api.isBlank() || preview.isBlank() || fin.isBlank()) }
-
-    MaterialTheme {
-        Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = { Text("4K Sticker Generator") },
-                    actions = {
-                        TextButton(onClick = { showSettings = !showSettings }) {
-                            Text(if (showSettings) "Open" else "Settings")
-                        }
-                    }
-                )
-            }
-        ) { pad ->
-            if (showSettings) {
-                SettingsScreen(
-                    modifier = Modifier.fillMaxSize().padding(pad),
-                    api = api, preview = preview, fin = fin
-                ) { a, p, f ->
-                    scope.launch { ds.edit { it[KEY_API] = a.trim(); it[KEY_PREVIEW] = p.trim(); it[KEY_FINAL] = f.trim() } }
-                    showSettings = false
+MaterialTheme(colorScheme = neonScheme()) {
+Box(Modifier.fillMaxSize()) {
+NeonBackground()
+Scaffold(
+containerColor = Color.Transparent,
+topBar = {
+TopAppBar(
+title = { Text("4K Sticker Generator") },
+colors = TopAppBarDefaults.topAppBarColors(
+containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+titleContentColor = MaterialTheme.colorScheme.onPrimary
+)
+)
+}
+) { pad ->
+val api = BuildConfig.FAL_KEY
+val previewSlug = BuildConfig.PREVIEW_MODEL_SLUG
+val finalSlug = BuildConfig.FINAL_MODEL_SLUG
+                Column(
+                Modifier
+                    .fillMaxSize()
+                    .padding(pad)
+                    .padding(12.dp)
+            ) {
+                if (api.isBlank()) {
+                    AssistChip(onClick = {}, label = { Text("Set FAL_KEY in GitHub Secrets and rebuild") })
+                    Spacer(Modifier.height(8.dp))
                 }
-            } else {
-                GeneratorScreen(
-                    modifier = Modifier.fillMaxSize().padding(pad),
-                    api = api, previewVersion = preview, finalVersion = fin
-                )
+                ElevatedCard(
+                    Modifier.fillMaxWidth(),
+                    elevation = CardDefaults.elevatedCardElevation(10.dp),
+                    colors = CardDefaults.elevatedCardColors(
+                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.75f)
+                    )
+                ) {
+                    GeneratorScreen(
+                        modifier = Modifier.padding(12.dp),
+                        api = api,
+                        previewVersion = previewSlug,
+                        finalVersion = finalSlug
+                    )
+                }
             }
         }
     }
+}
+}
+
+@Composable
+private fun neonScheme() = lightColorScheme(
+primary = Color(0xFF7C4DFF),
+onPrimary = Color.White,
+secondary = Color(0xFF00D2FF),
+background = Color(0xFF0D0F1A),
+onBackground = Color(0xFFE6E9F7),
+surface = Color(0xFF111326),
+onSurface = Color(0xFFE6E9F7),
+tertiary = Color(0xFFFF4081)
+)
+
+@Composable
+private fun NeonBackground() {
+Canvas(Modifier.fillMaxSize()) {
+val w = size.width
+val h = size.height
+// three soft radial glows
+drawCircle(
+brush = Brush.radialGradient(
+colors = listOf(Color(0x5540C4FF), Color.Transparent),
+center = Offset(w * 0.2f, h * 0.25f),
+radius = w * 0.5f
+),
+radius = w * 0.5f,
+center = Offset(w * 0.2f, h * 0.25f)
+)
+drawCircle(
+brush = Brush.radialGradient(
+colors = listOf(Color(0x55FF4081), Color.Transparent),
+center = Offset(w * 0.8f, h * 0.7f),
+radius = w * 0.45f
+),
+radius = w * 0.45f,
+center = Offset(w * 0.8f, h * 0.7f)
+)
+drawCircle(
+brush = Brush.radialGradient(
+colors = listOf(Color(0x557C4DFF), Color.Transparent),
+center = Offset(w * 0.4f, h * 0.85f),
+radius = w * 0.4f
+),
+radius = w * 0.4f,
+center = Offset(w * 0.4f, h * 0.85f)
+)
+}
 }
