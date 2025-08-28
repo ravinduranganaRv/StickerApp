@@ -10,11 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.material3.Button
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,6 +36,7 @@ val scope = rememberCoroutineScope()
 val client = remember { FalClient(api) }
 val previewSlug = BuildConfig.PREVIEW_MODEL_SLUG
 val finalSlug = BuildConfig.FINAL_MODEL_SLUG
+
     var imageUri by remember { mutableStateOf<Uri?>(null) }
 var previewUrls by remember { mutableStateOf(listOf<String>()) }
 var selectedPromptIndex by remember { mutableStateOf(0) }
@@ -50,6 +47,10 @@ val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetCon
     imageUri = it
     previewUrls = emptyList()
 }
+
+// Cost control UI
+var runAll by remember { mutableStateOf(false) }  // false = single category (20)
+var selectedCategory by remember { mutableStateOf("action") }
 
 Column(modifier = modifier.padding(16.dp)) {
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -81,7 +82,7 @@ Column(modifier = modifier.padding(16.dp)) {
                         urls.add(out)
                     }
                     previewUrls = urls
-                    status = "Previews ready. Select a prompt, then generate 100."
+                    status = "Previews ready. Select a prompt, then generate."
                 } catch (e: Exception) {
                     status = "Error: ${e.message}"
                 } finally { generating = false }
@@ -102,6 +103,37 @@ Column(modifier = modifier.padding(16.dp)) {
                 )
             }
         }
+
+        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Switch(checked = runAll, onCheckedChange = { runAll = it })
+            Spacer(Modifier.width(8.dp))
+            Text(if (runAll) "All 5 categories (100)" else "Single category (20)")
+            Spacer(Modifier.width(12.dp))
+            if (!runAll) {
+                // show category picker when single category mode
+                val cats = CATEGORIES.keys.toList()
+                var expanded by remember { mutableStateOf(false) }
+                ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+                    OutlinedTextField(
+                        value = selectedCategory,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Category") },
+                        modifier = Modifier.menuAnchor().width(180.dp)
+                    )
+                    ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        cats.forEach { c ->
+                            DropdownMenuItem(
+                                text = { Text(c) },
+                                onClick = { selectedCategory = c; expanded = false }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         Spacer(Modifier.height(12.dp))
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
@@ -117,49 +149,191 @@ Column(modifier = modifier.padding(16.dp)) {
     Button(
         onClick = {
             if (imageUri == null) return@Button
-            generating = true; status = "Starting 100× 4K generation…"
+            generating = true
+            status = if (runAll) "Starting 100× 4K…" else "Starting 20× 4K…"
             scope.launch(Dispatchers.IO) {
                 try {
                     val dataUrl = client.imageUriToDataUrl(ctx, imageUri!!)
                     val basePrompt = PROMPTS[selectedPromptIndex]
-                    var done = 0
-                    val total = CATEGORIES.values.sumOf { it.size }
+                    val catsToRun = if (runAll) CATEGORIES.entries.toList()
+                                    else listOf(CATEGORIES.entries.first { it.key == selectedCategory })
 
-                    for ((cat, list) in CATEGORIES) {
+                    var done = 0
+                    val total = catsToRun.sumOf { it.value.size }
+
+                    for ((cat, list) in catsToRun) {
                         for ((k, variant) in list.withIndex()) {
                             status = "[$cat] ${k + 1}/${list.size} (${++done}/$total)"
                             val prompt = "$basePrompt, $variant, sticker, white background, head-only, no neck"
                             val out = client.runFinal(
-                                modelSlug = finalSlug,
+                                modelSlug = finalVersion,  // BuildConfig.FINAL_MODEL_SLUG
                                 imageDataUrl = dataUrl,
                                 prompt = prompt
                             )
                             client.downloadToDownloads(out, "${cat}_${k + 1}.jpg")
                         }
                     }
-                    status = "Done. Saved 100 images in Downloads."
+                    status = "Done. Saved $total images in Downloads."
                 } catch (e: Exception) {
                     status = "Error: ${e.message}"
                 } finally { generating = false }
             }
         },
         enabled = imageUri != null && previewUrls.isNotEmpty() && !generating
-    ) { Text("Generate 100 at 4K") }
+    ) { Text(if (runAll) "Generate 100 at 4K" else "Generate 20 at 4K") }
 
     Spacer(Modifier.height(8.dp))
     if (generating) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
     Text(status, style = MaterialTheme.typography.bodySmall)
 }
+
+
+var imageUri by remember { mutableStateOf<Uri?>(null) }
+var previewUrls by remember { mutableStateOf(listOf<String>()) }
+var selectedPromptIndex by remember { mutableStateOf(0) }
+var generating by remember { mutableStateOf(false) }
+var status by remember { mutableStateOf("") }
+
+val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) {
+    imageUri = it
+    previewUrls = emptyList()
 }
 
-@Composable
-private fun PreviewImage(url: String) {
-var bmp by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
-LaunchedEffect(url) {
-try { java.net.URL(url).openStream().use { s -> bmp = BitmapFactory.decodeStream(s) } } catch (_: Throwable) {}
-}
-bmp?.let { Image(it.asImageBitmap(), null, Modifier.fillMaxWidth().height(120.dp)) }
-}
+// Cost control UI
+var runAll by remember { mutableStateOf(false) }  // false = single category (20)
+var selectedCategory by remember { mutableStateOf("action") }
 
-private fun loadThumb(ctx: Context, uri: Uri): android.graphics.Bitmap? =
-ctx.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+Column(modifier = modifier.padding(16.dp)) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Button(onClick = { pickImage.launch("image/*") }) {
+            Text(if (imageUri == null) "Upload photo" else "Change photo")
+        }
+        Spacer(Modifier.width(12.dp))
+        imageUri?.let { loadThumb(ctx, it)?.let { bm ->
+            Image(bm.asImageBitmap(), null, Modifier.size(64.dp))
+        } }
+    }
+
+    Spacer(Modifier.height(12.dp))
+    Button(
+        onClick = {
+            if (imageUri == null) return@Button
+            generating = true; status = "Uploading image…"
+            scope.launch(Dispatchers.IO) {
+                try {
+                    val dataUrl = client.imageUriToDataUrl(ctx, imageUri!!)
+                    val urls = mutableListOf<String>()
+                    for ((i, p) in PROMPTS.withIndex()) {
+                        status = "Preview ${i + 1}/5…"
+                        val out = client.runPreview(
+                            modelSlug = previewSlug,
+                            imageDataUrl = dataUrl,
+                            prompt = p + ", head-only portrait, clean white background"
+                        )
+                        urls.add(out)
+                    }
+                    previewUrls = urls
+                    status = "Previews ready. Select a prompt, then generate."
+                } catch (e: Exception) {
+                    status = "Error: ${e.message}"
+                } finally { generating = false }
+            }
+        },
+        enabled = imageUri != null && !generating
+    ) { Text("Generate 5 previews") }
+
+    if (previewUrls.isNotEmpty()) {
+        Spacer(Modifier.height(12.dp))
+        Text("Select one of the 5 prompts:")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            repeat(5) { i ->
+                FilterChip(
+                    selected = selectedPromptIndex == i,
+                    onClick = { selectedPromptIndex = i },
+                    label = { Text("Prompt ${i + 1}") }
+                )
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Switch(checked = runAll, onCheckedChange = { runAll = it })
+            Spacer(Modifier.width(8.dp))
+            Text(if (runAll) "All 5 categories (100)" else "Single category (20)")
+            Spacer(Modifier.width(12.dp))
+            if (!runAll) {
+                // show category picker when single category mode
+                val cats = CATEGORIES.keys.toList()
+                var expanded by remember { mutableStateOf(false) }
+                ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+                    OutlinedTextField(
+                        value = selectedCategory,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Category") },
+                        modifier = Modifier.menuAnchor().width(180.dp)
+                    )
+                    ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        cats.forEach { c ->
+                            DropdownMenuItem(
+                                text = { Text(c) },
+                                onClick = { selectedCategory = c; expanded = false }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(12.dp))
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            modifier = Modifier.height(220.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(previewUrls) { url -> PreviewImage(url) }
+        }
+    }
+
+    Spacer(Modifier.height(12.dp))
+    Button(
+        onClick = {
+            if (imageUri == null) return@Button
+            generating = true
+            status = if (runAll) "Starting 100× 4K…" else "Starting 20× 4K…"
+            scope.launch(Dispatchers.IO) {
+                try {
+                    val dataUrl = client.imageUriToDataUrl(ctx, imageUri!!)
+                    val basePrompt = PROMPTS[selectedPromptIndex]
+                    val catsToRun = if (runAll) CATEGORIES.entries.toList()
+                                    else listOf(CATEGORIES.entries.first { it.key == selectedCategory })
+
+                    var done = 0
+                    val total = catsToRun.sumOf { it.value.size }
+
+                    for ((cat, list) in catsToRun) {
+                        for ((k, variant) in list.withIndex()) {
+                            status = "[$cat] ${k + 1}/${list.size} (${++done}/$total)"
+                            val prompt = "$basePrompt, $variant, sticker, white background, head-only, no neck"
+                            val out = client.runFinal(
+                                modelSlug = finalVersion,  // BuildConfig.FINAL_MODEL_SLUG
+                                imageDataUrl = dataUrl,
+                                prompt = prompt
+                            )
+                            client.downloadToDownloads(out, "${cat}_${k + 1}.jpg")
+                        }
+                    }
+                    status = "Done. Saved $total images in Downloads."
+                } catch (e: Exception) {
+                    status = "Error: ${e.message}"
+                } finally { generating = false }
+            }
+        },
+        enabled = imageUri != null && previewUrls.isNotEmpty() && !generating
+    ) { Text(if (runAll) "Generate 100 at 4K" else "Generate 20 at 4K") }
+
+    Spacer(Modifier.height(8.dp))
+    if (generating) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+    Text(status, style = MaterialTheme.typography.bodySmall)
+}
