@@ -1,8 +1,29 @@
+Direct Chat
+
+
+gpt-5-high
+gpt-5-high
+
+
+
+Great catch. That error means Retrofit/Moshi couldn’t create a JSON converter for UploadResp. Why? We’re using MoshiConverterFactory.create() without a Moshi instance that includes the KotlinJsonAdapterFactory. On Android, you must provide a Moshi built with KotlinJsonAdapterFactory (reflection) unless you set up Moshi codegen (KSP), which we didn’t.
+
+Fix: replace ReplicateClient.kt with a version that builds Moshi like this:
+Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+
+Do this (on your phone in GitHub)
+
+Open this file to edit
+Path: app/src/main/java/com/sticker/app/net/ReplicateClient.kt
+Tap the pencil (Edit)
+Replace the entire file with this code (package first, no extra lines)
 package com.sticker.app.net
 
 import android.content.Context
 import android.net.Uri
 import android.os.Environment
+import com.squareup.moshi.Moshi
+import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import com.squareup.moshi.JsonClass
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -23,15 +44,17 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 
 interface ReplicateApi {
-    @Multipart
-    @POST("v1/files")
-    suspend fun uploadFile(@Part file: MultipartBody.Part): UploadResp
+@Multipart
+@POST("v1/files")
+suspend fun uploadFile(@Part file: MultipartBody.Part): UploadResp
 
-    @POST("v1/predictions")
-    suspend fun createPrediction(@Body body: CreatePredictionReq): PredictionResp
+text
 
-    @GET("v1/predictions/{id}")
-    suspend fun getPrediction(@Path("id") id: String): PredictionResp
+@POST("v1/predictions")
+suspend fun createPrediction(@Body body: CreatePredictionReq): PredictionResp
+
+@GET("v1/predictions/{id}")
+suspend fun getPrediction(@Path("id") id: String): PredictionResp
 }
 
 @JsonClass(generateAdapter = true)
@@ -39,79 +62,84 @@ data class UploadResp(val url: String?)
 
 @JsonClass(generateAdapter = true)
 data class CreatePredictionReq(
-    val version: String,
-    val input: Map<String, @JvmSuppressWildcards Any>
+val version: String,
+val input: Map<String, @JvmSuppressWildcards Any>
 )
 
 @JsonClass(generateAdapter = true)
 data class PredictionResp(
-    val id: String,
-    val status: String,
-    val output: Any?,
-    val error: String?
+val id: String,
+val status: String,
+val output: Any?,
+val error: String?
 )
 
 class ReplicateClient(private val token: String) {
-    private val ok = OkHttpClient.Builder()
-        .callTimeout(300, TimeUnit.SECONDS)
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(300, TimeUnit.SECONDS)
-        .build()
+private val ok = OkHttpClient.Builder()
+.callTimeout(300, TimeUnit.SECONDS)
+.connectTimeout(30, TimeUnit.SECONDS)
+.readTimeout(300, TimeUnit.SECONDS)
+.build()
 
-    private val api: ReplicateApi = Retrofit.Builder()
-        .baseUrl("https://api.replicate.com/")
-        .client(
-            ok.newBuilder()
-                .addInterceptor { chain ->
-                    val req = chain.request().newBuilder()
-                        .addHeader("Authorization", "Token $token")
-                        .addHeader("Content-Type", "application/json")
-                        .build()
-                    chain.proceed(req)
-                }
-                .build()
-        )
-        .addConverterFactory(MoshiConverterFactory.create())
-        .build()
-        .create(ReplicateApi::class.java)
+text
 
-    suspend fun uploadImage(ctx: Context, uri: Uri): String {
-        val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-            ?: error("Cannot read image")
-        val body = bytes.toRequestBody("application/octet-stream".toMediaType())
-        val part = MultipartBody.Part.createFormData("file", "upload.jpg", body)
-        val resp = api.uploadFile(part)
-        return resp.url ?: error("Upload failed")
-    }
+// IMPORTANT: Moshi with KotlinJsonAdapterFactory (reflection)
+private val moshi: Moshi = Moshi.Builder()
+    .add(KotlinJsonAdapterFactory())
+    .build()
 
-    suspend fun generateImage(version: String, input: Map<String, Any>): String {
-        var cur = api.createPrediction(CreatePredictionReq(version, input))
-        while (cur.status in listOf("starting", "processing", "queued", "running")) {
-            Thread.sleep(2000)
-            cur = api.getPrediction(cur.id)
-        }
-        if (cur.status != "succeeded") {
-            throw RuntimeException("Generation failed: ${cur.error ?: cur.status}")
-        }
-        val out = cur.output
-        return when (out) {
-            is String -> out
-            is List<*> -> (out.firstOrNull() as? String) ?: error("Empty output")
-            else -> error("Unknown output format")
-        }
-    }
-
-    fun downloadToDownloads(ctx: Context, url: String, fileName: String): String {
-        val req = Request.Builder().url(url).build()
-        ok.newCall(req).execute().use { resp ->
-            if (!resp.isSuccessful) error("Download failed ${resp.code}")
-            val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            if (!dir.exists()) dir.mkdirs()
-            val out = File(dir, fileName)
-            resp.body?.source()?.use { src ->
-                out.sink().buffer().use { sink -> sink.writeAll(src) }
+private val api: ReplicateApi = Retrofit.Builder()
+    .baseUrl("https://api.replicate.com/")
+    .client(
+        ok.newBuilder()
+            .addInterceptor { chain ->
+                val req = chain.request().newBuilder()
+                    .addHeader("Authorization", "Token $token")
+                    .addHeader("Content-Type", "application/json")
+                    .build()
+                chain.proceed(req)
             }
-            return out.absolutePath
-        }
+            .build()
+    )
+    .addConverterFactory(MoshiConverterFactory.create(moshi))
+    .build()
+    .create(ReplicateApi::class.java)
+
+suspend fun uploadImage(ctx: Context, uri: Uri): String {
+    val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        ?: error("Cannot read image")
+    val body = bytes.toRequestBody("application/octet-stream".toMediaType())
+    val part = MultipartBody.Part.createFormData("file", "upload.jpg", body)
+    val resp = api.uploadFile(part)
+    return resp.url ?: error("Upload failed")
+}
+
+suspend fun generateImage(version: String, input: Map<String, Any>): String {
+    var cur = api.createPrediction(CreatePredictionReq(version, input))
+    while (cur.status in listOf("starting", "processing", "queued", "running")) {
+        Thread.sleep(2000)
+        cur = api.getPrediction(cur.id)
     }
+    if (cur.status != "succeeded") throw RuntimeException("Generation failed: ${cur.error ?: cur.status}")
+    val out = cur.output
+    return when (out) {
+        is String -> out
+        is List<*> -> (out.firstOrNull() as? String) ?: error("Empty output")
+        else -> error("Unknown output format")
+    }
+}
+
+fun downloadToDownloads(ctx: Context, url: String, fileName: String): String {
+    val req = Request.Builder().url(url).build()
+    ok.newCall(req).execute().use { resp ->
+        if (!resp.isSuccessful) error("Download failed ${resp.code}")
+        val dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        if (!dir.exists()) dir.mkdirs()
+        val out = File(dir, fileName)
+        resp.body?.source()?.use { src ->
+            out.sink().buffer().use { sink -> sink.writeAll(src) }
+        }
+        return out.absolutePath
+    }
+}
 }
