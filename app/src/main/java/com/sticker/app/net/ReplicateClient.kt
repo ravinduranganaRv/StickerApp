@@ -1,22 +1,3 @@
-Direct Chat
-
-
-gpt-5-high
-gpt-5-high
-
-
-
-Great catch. That error means Retrofit/Moshi couldn’t create a JSON converter for UploadResp. Why? We’re using MoshiConverterFactory.create() without a Moshi instance that includes the KotlinJsonAdapterFactory. On Android, you must provide a Moshi built with KotlinJsonAdapterFactory (reflection) unless you set up Moshi codegen (KSP), which we didn’t.
-
-Fix: replace ReplicateClient.kt with a version that builds Moshi like this:
-Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
-
-Do this (on your phone in GitHub)
-
-Open this file to edit
-Path: app/src/main/java/com/sticker/app/net/ReplicateClient.kt
-Tap the pencil (Edit)
-Replace the entire file with this code (package first, no extra lines)
 package com.sticker.app.net
 
 import android.content.Context
