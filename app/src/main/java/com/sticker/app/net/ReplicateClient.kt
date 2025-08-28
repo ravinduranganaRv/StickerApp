@@ -3,9 +3,9 @@ package com.sticker.app.net
 import android.content.Context
 import android.net.Uri
 import android.os.Environment
+import com.squareup.moshi.JsonClass
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
-import com.squareup.moshi.JsonClass
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -28,14 +28,12 @@ interface ReplicateApi {
 @Multipart
 @POST("v1/files")
 suspend fun uploadFile(@Part file: MultipartBody.Part): UploadResp
-
-text
-
-@POST("v1/predictions")
+    @POST("v1/predictions")
 suspend fun createPrediction(@Body body: CreatePredictionReq): PredictionResp
 
 @GET("v1/predictions/{id}")
 suspend fun getPrediction(@Path("id") id: String): PredictionResp
+    
 }
 
 @JsonClass(generateAdapter = true)
@@ -62,9 +60,8 @@ private val ok = OkHttpClient.Builder()
 .readTimeout(300, TimeUnit.SECONDS)
 .build()
 
-text
 
-// IMPORTANT: Moshi with KotlinJsonAdapterFactory (reflection)
+// Moshi with Kotlin reflection so Retrofit can parse our data classes
 private val moshi: Moshi = Moshi.Builder()
     .add(KotlinJsonAdapterFactory())
     .build()
